@@ -1,16 +1,38 @@
-# React + Vite
+# Password Simulator Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite app for interactive password strength and breach analysis.
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+npm install
+npm run dev
+```
 
-## React Compiler
+Development server runs on Vite defaults and proxies `/analyze` and `/health` to the backend.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Environment
 
-## Expanding the ESLint configuration
+Copy `.env.example` to `.env` if you want to target a custom backend origin:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+cp .env.example .env
+```
+
+- `VITE_API_BASE_URL`: optional backend origin (for example `https://api.example.com`).
+
+If unset, the frontend sends requests to same-origin `/analyze`.
+
+## Scripts
+
+- `npm run dev`: start local dev server
+- `npm run build`: production build
+- `npm run lint`: ESLint checks
+- `npm run test`: node-based unit tests for frontend utilities
+
+## UX/Security Notes
+
+- Password generation uses `crypto.getRandomValues`.
+- Analyzer calls include timeout + retry behavior.
+- Breach descriptions render as plain text (no raw HTML injection).
+- Modal includes focus trap and keyboard escape handling.

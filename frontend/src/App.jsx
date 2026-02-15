@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
+import { analyzePasswordRequest, getAnalyzeEndpointLabel } from './utils/api';
+import { buildPassword } from './utils/passwordGenerator';
+import { getCheckExplanation, toPlainText } from './utils/text';
 
 const CARD_CONFIG = [
   { key: 'length', label: 'Length', icon: '🔐' },
@@ -37,7 +40,7 @@ function StrengthMeter({ level, color, value }) {
   );
 }
 
-function AnalysisCard({ icon, label, pass }) {
+function AnalysisCard({ icon, label, pass, explanation }) {
   return (
     <div
       className={`analysis-card ${pass ? 'analysis-card--pass' : 'analysis-card--fail'}`}
@@ -53,6 +56,7 @@ function AnalysisCard({ icon, label, pass }) {
       <span className={`analysis-card__status ${pass ? 'text-emerald-300' : 'text-rose-300'}`} aria-hidden>
         {pass ? 'Pass' : 'Fail'}
       </span>
+      <p className="analysis-card__explanation">{explanation}</p>
     </div>
   );
 }
@@ -109,6 +113,17 @@ function BreachDetails({ breachDetails }) {
     return null;
   }
 
+  function toggleExpanded(idx) {
+    setExpanded((current) => (current === idx ? null : idx));
+  }
+
+  function handleCardKeyDown(event, idx) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleExpanded(idx);
+    }
+  }
+
   return (
     <div className="surface-panel mt-6 p-6">
       <h3 className="panel-title text-orange-300">
@@ -133,7 +148,12 @@ function BreachDetails({ breachDetails }) {
           <div
             key={idx}
             className="rounded-xl border border-slate-600 bg-slate-800/50 p-4 transition hover:border-orange-500/50"
-            onClick={() => setExpanded(expanded === idx ? null : idx)}
+            onClick={() => toggleExpanded(idx)}
+            onKeyDown={(event) => handleCardKeyDown(event, idx)}
+            role="button"
+            tabIndex={0}
+            aria-expanded={expanded === idx}
+            aria-label={`Toggle details for breach ${breach.title}`}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -159,10 +179,9 @@ function BreachDetails({ breachDetails }) {
 
             {expanded === idx && (
               <div className="mt-3 border-t border-slate-600 pt-3">
-                <div
-                  className="text-sm leading-relaxed text-slate-300"
-                  dangerouslySetInnerHTML={{ __html: breach.description }}
-                />
+                <div className="text-sm leading-relaxed text-slate-300">
+                  {toPlainText(breach.description)}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {breach.dataClasses.slice(0, 5).map((dc, i) => (
                     <span key={i} className="rounded bg-slate-600 px-2 py-1 text-xs text-slate-200">
@@ -216,7 +235,7 @@ function BreachWarning({ breachCount, riskLevel, breachDetails }) {
 
 function ErrorMessage({ message, onDismiss }) {
   return (
-    <div className="mx-auto mt-4 flex max-w-xl items-center justify-between rounded-lg border-2 border-rose-500 bg-rose-900/90 p-4">
+    <div className="mx-auto mt-4 flex max-w-xl items-center justify-between rounded-lg border-2 border-rose-500 bg-rose-900/90 p-4" role="alert">
       <div className="flex items-center gap-3">
         <span className="text-2xl">❌</span>
         <span className="text-white">{message}</span>
@@ -232,11 +251,20 @@ function ErrorMessage({ message, onDismiss }) {
 
 function LoadingSpinner() {
   return (
-    <div className="mt-4 flex items-center justify-center">
+    <div className="mt-4 flex items-center justify-center" aria-hidden>
       <div className="loading-spinner" />
     </div>
   );
 }
+
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 export default function App() {
   const [password, setPassword] = useState('');
@@ -250,15 +278,90 @@ export default function App() {
   const [genSymbols, setGenSymbols] = useState(true);
   const [genNumbers, setGenNumbers] = useState(true);
   const [genCopied, setGenCopied] = useState(false);
+  const [liveMessage, setLiveMessage] = useState('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const modalRef = useRef(null);
+  const openGeneratorButtonRef = useRef(null);
+  const lastFocusedBeforeModalRef = useRef(null);
+
+  const endpointLabel = useMemo(() => getAnalyzeEndpointLabel(), []);
 
   useEffect(() => {
-    function onKey(e) {
-      if (e.key === 'Escape' && showGen) setShowGen(false);
+    function setOnline() {
+      setIsOnline(true);
+      setLiveMessage('Connection restored.');
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    function setOffline() {
+      setIsOnline(false);
+      setError('Network appears offline. Analysis requests are paused until connection is restored.');
+      setLiveMessage('Connection lost.');
+    }
+
+    window.addEventListener('online', setOnline);
+    window.addEventListener('offline', setOffline);
+
+    return () => {
+      window.removeEventListener('online', setOnline);
+      window.removeEventListener('offline', setOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showGen) return;
+
+    lastFocusedBeforeModalRef.current = document.activeElement;
+
+    const focusable = modalRef.current?.querySelectorAll(FOCUSABLE_SELECTOR);
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus();
+    }
+
+    function onModalKeyDown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowGen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const items = modalRef.current?.querySelectorAll(FOCUSABLE_SELECTOR);
+      if (!items || items.length === 0) return;
+
+      const first = items[0];
+      const last = items[items.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onModalKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', onModalKeyDown);
+    };
+  }, [showGen]);
+
+  useEffect(() => {
+    if (showGen) return;
+
+    const restoreTarget =
+      openGeneratorButtonRef.current ||
+      lastFocusedBeforeModalRef.current ||
+      inputRef.current;
+
+    if (restoreTarget && typeof restoreTarget.focus === 'function') {
+      restoreTarget.focus();
+    }
   }, [showGen]);
 
   useEffect(() => {
@@ -271,8 +374,10 @@ export default function App() {
 
   useEffect(() => {
     if (!password) {
-      setAnalysis(null);
-      setError(null);
+      return;
+    }
+
+    if (!isOnline) {
       return;
     }
 
@@ -280,37 +385,28 @@ export default function App() {
       abortControllerRef.current.abort();
     }
 
-    setLoading(true);
-    setError(null);
-
     const timeout = setTimeout(() => {
+      setLoading(true);
+      setError(null);
       abortControllerRef.current = new AbortController();
 
-      fetch('http://localhost:4000/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-        signal: abortControllerRef.current.signal
+      analyzePasswordRequest(password, {
+        signal: abortControllerRef.current.signal,
+        retries: 1,
       })
-        .then(res => {
-          if (!res.ok) {
-            return res.json().then(data => {
-              throw new Error(data.error || 'Analysis failed');
-            });
-          }
-          return res.json();
-        })
-        .then(data => {
+        .then((data) => {
           setAnalysis(data);
           setError(null);
+          setLiveMessage(`Analysis updated. Strength: ${data.strengthLevel}.`);
         })
-        .catch(err => {
+        .catch((err) => {
           if (err.name === 'AbortError') {
             return;
           }
           console.error('Analysis error:', err);
           setError(err.message || 'Failed to analyze password. Please check if the backend is running.');
           setAnalysis(null);
+          setLiveMessage('Analysis failed.');
         })
         .finally(() => {
           setLoading(false);
@@ -318,44 +414,38 @@ export default function App() {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [password]);
+  }, [password, isOnline]);
 
   function handleGen() {
-    let chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    if (genNumbers) chars += '0123456789';
-    if (genSymbols) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
-
-    let out = '';
-    const categories = [];
-    categories.push('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    if (genNumbers) categories.push('0123456789');
-    if (genSymbols) categories.push('!@#$%^&*()_+-=[]{}|;:,.<>?');
-
-    categories.forEach(category => {
-      out += category[Math.floor(Math.random() * category.length)];
-    });
-
-    for (let i = out.length; i < genLength; ++i) {
-      out += chars[Math.floor(Math.random() * chars.length)];
+    try {
+      const generated = buildPassword({
+        length: genLength,
+        includeNumbers: genNumbers,
+        includeSymbols: genSymbols,
+      });
+      setGenPassword(generated);
+      setLiveMessage('Secure password generated.');
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to generate password securely.');
     }
-
-    out = out.split('').sort(() => Math.random() - 0.5).join('');
-    setGenPassword(out);
   }
 
   function handleCopyGen() {
     navigator.clipboard.writeText(genPassword).then(() => {
       setGenCopied(true);
+      setLiveMessage('Generated password copied to clipboard.');
       setTimeout(() => setGenCopied(false), 1200);
-    }).catch(err => {
+    }).catch((err) => {
       console.error('Failed to copy:', err);
-      alert('Failed to copy password to clipboard');
+      setError('Failed to copy password to clipboard');
     });
   }
 
   function handleUseGenerated() {
     setPassword(genPassword);
     setShowGen(false);
+    setLiveMessage('Generated password applied for analysis.');
   }
 
   function handleClear() {
@@ -365,7 +455,44 @@ export default function App() {
     setShowGen(false);
     setGenPassword('');
     setShowPassword(false);
+    setLiveMessage('Cleared password and results.');
     if (inputRef.current && typeof inputRef.current.focus === 'function') inputRef.current.focus();
+  }
+
+  function handlePasswordInput(value) {
+    setPassword(value);
+    if (!value) {
+      setAnalysis(null);
+      setError(null);
+      setLoading(false);
+      setLiveMessage('Input cleared.');
+    }
+  }
+
+  function applySuggestion(suggestion) {
+    if (suggestion.toLowerCase().includes('generate')) {
+      setShowGen(true);
+      return;
+    }
+
+    if (suggestion.toLowerCase().includes('uppercase') && password) {
+      setPassword(`${password}A`);
+      return;
+    }
+
+    if (suggestion.toLowerCase().includes('lowercase') && password) {
+      setPassword(`${password}a`);
+      return;
+    }
+
+    if (suggestion.toLowerCase().includes('numbers') && password) {
+      setPassword(`${password}7`);
+      return;
+    }
+
+    if (suggestion.toLowerCase().includes('symbols') && password) {
+      setPassword(`${password}!`);
+    }
   }
 
   return (
@@ -373,11 +500,23 @@ export default function App() {
       <div className="app-ambient app-ambient--one" aria-hidden />
       <div className="app-ambient app-ambient--two" aria-hidden />
 
+      <div className="sr-only" aria-live="polite">{liveMessage}</div>
+
       <main className="app-main">
+        {!isOnline && (
+          <div className="offline-banner" role="status" aria-live="polite">
+            You are offline. Reconnect to resume real-time analysis.
+          </div>
+        )}
+
         <section className="hero-panel">
           <p className="hero-kicker">Security workbench</p>
           <h1 className="hero-title">Password Analyzer</h1>
           <p className="hero-subtitle">Stress-test any password against structure checks, entropy, and known breach signals in real time.</p>
+
+          <div className="trust-note">
+            Privacy note: input is sent only to the configured analyzer endpoint: <code>{endpointLabel}</code>
+          </div>
 
           <div className="input-row">
             <input
@@ -386,7 +525,7 @@ export default function App() {
               ref={inputRef}
               placeholder="Enter your password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={(e) => handlePasswordInput(e.target.value)}
               autoFocus
               aria-label="Password"
               style={{ minWidth: 0 }}
@@ -394,7 +533,7 @@ export default function App() {
             <button
               className="reveal-button"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              onClick={() => setShowPassword(v => !v)}
+              onClick={() => setShowPassword((v) => !v)}
               style={{ minWidth: 0 }}
             >
               {showPassword ? 'Hide' : 'Show'}
@@ -402,7 +541,11 @@ export default function App() {
           </div>
 
           <div className="action-row">
-            <button className="button button--primary" onClick={() => setShowGen(true)}>
+            <button
+              className="button button--primary"
+              onClick={() => setShowGen(true)}
+              ref={openGeneratorButtonRef}
+            >
               Generate Password
             </button>
             <button className="button button--ghost" onClick={handleClear} aria-label="Clear password and analysis">
@@ -438,14 +581,18 @@ export default function App() {
               <h2>Quick Security Checks</h2>
             </div>
             <div className="results-grid">
-              {CARD_CONFIG.map(card => {
-                const check = analysis.checks.find(c => c.key === card.key);
+              {CARD_CONFIG.map((card) => {
+                const check = analysis.checks.find((entry) => entry.key === card.key) || {
+                  key: card.key,
+                  pass: false,
+                };
                 return (
                   <AnalysisCard
                     key={card.key}
                     icon={card.icon}
                     label={card.label}
-                    pass={check ? check.pass : false}
+                    pass={check.pass}
+                    explanation={getCheckExplanation(check)}
                   />
                 );
               })}
@@ -456,27 +603,33 @@ export default function App() {
         {analysis && !loading && analysis.suggestions && analysis.suggestions.length > 0 && (
           <section className="suggestions-wrap">
             <h2 className="panel-heading__inline">How to improve this password</h2>
-            <SuggestionsPanel suggestions={analysis.suggestions} />
+            <SuggestionsPanel suggestions={analysis.suggestions} onApply={applySuggestion} />
           </section>
         )}
       </main>
 
       {showGen && (
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowGen(false)}>
-          <div className="generator-modal">
+          <div
+            className="generator-modal"
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="generator-title"
+          >
             <button className="modal-close" onClick={() => setShowGen(false)} aria-label="Close">×</button>
-            <h2 className="panel-heading__inline mb-4">Generate Strong Password</h2>
+            <h2 id="generator-title" className="panel-heading__inline mb-4">Generate Strong Password</h2>
             <div className="flex items-center gap-4 mb-4">
-              <label className="text-slate-300 min-w-[60px]">Length</label>
-              <input type="range" min={8} max={32} value={genLength} onChange={e => setGenLength(Number(e.target.value))} className="flex-1 accent-emerald-300" />
+              <label className="text-slate-300 min-w-[60px]" htmlFor="length-range">Length</label>
+              <input id="length-range" type="range" min={8} max={32} value={genLength} onChange={(e) => setGenLength(Number(e.target.value))} className="flex-1 accent-emerald-300" />
               <span className="font-mono text-emerald-300 min-w-[30px] text-right">{genLength}</span>
             </div>
             <div className="flex gap-4 mb-4">
               <label className="flex items-center gap-2 text-slate-300">
-                <input type="checkbox" checked={genSymbols} onChange={e => setGenSymbols(e.target.checked)} className="accent-emerald-300" /> Symbols
+                <input type="checkbox" checked={genSymbols} onChange={(e) => setGenSymbols(e.target.checked)} className="accent-emerald-300" /> Symbols
               </label>
               <label className="flex items-center gap-2 text-slate-300">
-                <input type="checkbox" checked={genNumbers} onChange={e => setGenNumbers(e.target.checked)} className="accent-emerald-300" /> Numbers
+                <input type="checkbox" checked={genNumbers} onChange={(e) => setGenNumbers(e.target.checked)} className="accent-emerald-300" /> Numbers
               </label>
             </div>
             <div className="flex items-center gap-2 mb-3">
@@ -493,7 +646,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            {genCopied && <div className="mt-2 text-center text-emerald-300">Copied to clipboard.</div>}
+            {genCopied && <div className="mt-2 text-center text-emerald-300" role="status" aria-live="polite">Copied to clipboard.</div>}
           </div>
         </div>
       )}
