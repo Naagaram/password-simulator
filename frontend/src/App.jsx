@@ -13,23 +13,23 @@ const CARD_CONFIG = [
 ];
 
 const STRENGTH_COLORS = {
-  red: 'bg-red-500',
-  orange: 'bg-orange-400',
-  yellow: 'bg-yellow-300',
-  green: 'bg-green-400',
-  gray: 'bg-gray-500',
+  red: 'meter-fill--red',
+  orange: 'meter-fill--orange',
+  yellow: 'meter-fill--yellow',
+  green: 'meter-fill--green',
+  gray: 'meter-fill--gray',
 };
 
 function StrengthMeter({ level, color, value }) {
   return (
-    <div className="w-full mt-4">
-      <div className="h-3 w-full bg-gray-800 rounded-full overflow-hidden">
+    <div className="w-full mt-6" role="status" aria-live="polite">
+      <div className="meter-track">
         <div
-          className={`h-full transition-all duration-500 ${STRENGTH_COLORS[color]}`}
+          className={`meter-fill ${STRENGTH_COLORS[color] || STRENGTH_COLORS.gray}`}
           style={{ width: `${Math.min(100, value * 1.2)}%` }}
         />
       </div>
-      <div className="flex justify-between text-xs mt-1 text-gray-400">
+      <div className="strength-meta">
         <span className="capitalize">{level.replace(/_/g, ' ')}</span>
         <span>{value} bits entropy</span>
       </div>
@@ -40,18 +40,18 @@ function StrengthMeter({ level, color, value }) {
 function AnalysisCard({ icon, label, pass }) {
   return (
     <div
-      className={`bg-[rgba(24,26,32,0.85)] backdrop-blur rounded-xl p-4 flex flex-col items-center shadow-xl border-2 transition-all duration-300 focus:outline-none focus:ring-4 ${pass ? 'border-green-400' : 'border-red-500'}`}
+      className={`analysis-card ${pass ? 'analysis-card--pass' : 'analysis-card--fail'}`}
       role="status"
       aria-atomic="true"
       tabIndex={0}
       aria-label={`${label}: ${pass ? 'pass' : 'fail'}`}
     >
-      <span className="text-3xl mb-2" aria-hidden>
+      <span className="analysis-card__icon" aria-hidden>
         {icon}
       </span>
-      <span className="font-semibold text-lg text-gray-100">{label}</span>
-      <span className={`mt-2 text-2xl ${pass ? 'text-green-400' : 'text-red-500'} transition`} aria-hidden>
-        {pass ? '✔️' : '❌'}
+      <span className="analysis-card__label">{label}</span>
+      <span className={`analysis-card__status ${pass ? 'text-emerald-300' : 'text-rose-300'}`} aria-hidden>
+        {pass ? 'Pass' : 'Fail'}
       </span>
     </div>
   );
@@ -59,11 +59,11 @@ function AnalysisCard({ icon, label, pass }) {
 
 function SuggestionsPanel({ suggestions, onApply }) {
   return (
-    <div className="flex flex-wrap gap-2 mt-6">
+    <div className="suggestions-panel">
       {suggestions.map((s, i) => (
         <button
           key={i}
-          className="bg-[#00E5FF]/20 hover:bg-[#39FF14]/30 text-[#39FF14] px-4 py-2 rounded-full font-semibold shadow transition"
+          className="suggestion-pill"
           onClick={() => onApply && onApply(s)}
           tabIndex={0}
         >
@@ -76,24 +76,24 @@ function SuggestionsPanel({ suggestions, onApply }) {
 
 function BreachTimeline({ timeline }) {
   if (!timeline || timeline.length === 0) return null;
-  
+
   return (
-    <div className="mt-6 bg-slate-800/80 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2">
+    <div className="surface-panel mt-6 p-6">
+      <h3 className="panel-title text-rose-300">
         <span>📅</span> Breach Timeline
       </h3>
       <div className="space-y-3">
         {timeline.map((item, idx) => (
-          <div key={idx} className="flex items-start gap-4 border-l-2 border-red-500/30 pl-4">
-            <div className="min-w-[100px] text-sm text-gray-400">
-              {new Date(item.date).toLocaleDateString('en-US', { 
-                year: 'numeric', 
-                month: 'short' 
+          <div key={idx} className="flex items-start gap-4 border-l-2 border-rose-500/30 pl-4">
+            <div className="min-w-[100px] text-sm text-slate-400">
+              {new Date(item.date).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short'
               })}
             </div>
             <div className="flex-1">
               <div className="font-semibold text-white">{item.name}</div>
-              <div className="text-xs text-gray-400">{item.pwnCount} accounts affected</div>
+              <div className="text-xs text-slate-400">{item.pwnCount} accounts affected</div>
             </div>
           </div>
         ))}
@@ -104,70 +104,68 @@ function BreachTimeline({ timeline }) {
 
 function BreachDetails({ breachDetails }) {
   const [expanded, setExpanded] = useState(null);
-  
+
   if (!breachDetails || !breachDetails.likelyBreaches || breachDetails.likelyBreaches.length === 0) {
     return null;
   }
-  
+
   return (
-    <div className="mt-6 bg-slate-800/80 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-orange-400 mb-4 flex items-center gap-2">
+    <div className="surface-panel mt-6 p-6">
+      <h3 className="panel-title text-orange-300">
         <span>🔍</span> Likely Breaches ({breachDetails.totalBreachesFound})
       </h3>
-      
-      {/* Data Classes */}
+
       {breachDetails.dataClasses && breachDetails.dataClasses.length > 0 && (
-        <div className="mb-4 p-3 bg-red-900/20 rounded border border-red-500/30">
-          <div className="text-sm font-semibold text-red-300 mb-2">Exposed Data Types:</div>
+        <div className="mb-4 rounded-lg border border-rose-500/30 bg-rose-900/20 p-3">
+          <div className="mb-2 text-sm font-semibold text-rose-200">Exposed Data Types:</div>
           <div className="flex flex-wrap gap-2">
             {breachDetails.dataClasses.map((dc, idx) => (
-              <span key={idx} className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded">
+              <span key={idx} className="rounded bg-rose-500/20 px-2 py-1 text-xs text-rose-200">
                 {dc}
               </span>
             ))}
           </div>
         </div>
       )}
-      
-      {/* Breach Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {breachDetails.likelyBreaches.slice(0, 6).map((breach, idx) => (
-          <div 
-            key={idx} 
-            className="bg-slate-700/50 rounded-lg p-4 border border-slate-600 hover:border-orange-500/50 transition cursor-pointer"
+          <div
+            key={idx}
+            className="rounded-xl border border-slate-600 bg-slate-800/50 p-4 transition hover:border-orange-500/50"
             onClick={() => setExpanded(expanded === idx ? null : idx)}
           >
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <div className="font-bold text-white flex items-center gap-2">
+                <div className="flex items-center gap-2 font-bold text-white">
                   {breach.title}
-                  {breach.isVerified && <span className="text-green-400 text-xs">✓</span>}
+                  {breach.isVerified && <span className="text-xs text-emerald-300">✓</span>}
                 </div>
-                <div className="text-xs text-gray-400 mt-1">{breach.domain}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {new Date(breach.breachDate).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long' 
+                <div className="mt-1 text-xs text-slate-400">{breach.domain}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {new Date(breach.breachDate).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long'
                   })}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-bold text-red-400">
+                <div className="text-sm font-bold text-rose-300">
                   {breach.pwnCount.toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-500">accounts</div>
+                <div className="text-xs text-slate-500">accounts</div>
               </div>
             </div>
-            
+
             {expanded === idx && (
-              <div className="mt-3 pt-3 border-t border-slate-600">
-                <div 
-                  className="text-sm text-gray-300 leading-relaxed"
+              <div className="mt-3 border-t border-slate-600 pt-3">
+                <div
+                  className="text-sm leading-relaxed text-slate-300"
                   dangerouslySetInnerHTML={{ __html: breach.description }}
                 />
                 <div className="mt-2 flex flex-wrap gap-1">
                   {breach.dataClasses.slice(0, 5).map((dc, i) => (
-                    <span key={i} className="text-xs bg-slate-600 text-gray-300 px-2 py-1 rounded">
+                    <span key={i} className="rounded bg-slate-600 px-2 py-1 text-xs text-slate-200">
                       {dc}
                     </span>
                   ))}
@@ -183,29 +181,29 @@ function BreachDetails({ breachDetails }) {
 
 function BreachWarning({ breachCount, riskLevel, breachDetails }) {
   const [showDetails, setShowDetails] = useState(false);
-  
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-red-700/90 border-4 border-red-500 rounded-xl p-6 mt-6 flex flex-col items-center animate-pulse shadow-lg">
+    <div className="mx-auto max-w-4xl px-4 md:px-0">
+      <div className="warning-shell">
         <span className="text-4xl">⚠️</span>
-        <h2 className="text-2xl font-bold text-white mt-2">This password has appeared in data breaches</h2>
+        <h2 className="mt-2 text-2xl font-bold text-white">This password has appeared in data breaches</h2>
         <div className="mt-2 text-lg text-white">
           Seen in <span className="font-bold">{breachCount.toLocaleString()}</span> breaches
         </div>
-        <span className="mt-2 px-4 py-1 rounded-full bg-black/60 text-red-300 font-bold uppercase tracking-wide">
+        <span className="warning-risk-chip">
           {riskLevel} Risk
         </span>
-        
+
         {breachDetails && breachDetails.likelyBreaches && breachDetails.likelyBreaches.length > 0 && (
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="mt-4 bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-lg transition"
+            className="button button--secondary mt-4"
           >
             {showDetails ? 'Hide' : 'Show'} Breach Details
           </button>
         )}
       </div>
-      
+
       {showDetails && breachDetails && (
         <div className="mt-6 space-y-4">
           <BreachTimeline timeline={breachDetails.timeline} />
@@ -218,13 +216,13 @@ function BreachWarning({ breachCount, riskLevel, breachDetails }) {
 
 function ErrorMessage({ message, onDismiss }) {
   return (
-    <div className="bg-red-900/90 border-2 border-red-500 rounded-lg p-4 mt-4 flex items-center justify-between max-w-xl mx-auto">
+    <div className="mx-auto mt-4 flex max-w-xl items-center justify-between rounded-lg border-2 border-rose-500 bg-rose-900/90 p-4">
       <div className="flex items-center gap-3">
         <span className="text-2xl">❌</span>
         <span className="text-white">{message}</span>
       </div>
       {onDismiss && (
-        <button onClick={onDismiss} className="text-white hover:text-red-200 ml-4">
+        <button onClick={onDismiss} className="ml-4 text-white hover:text-rose-200">
           ✕
         </button>
       )}
@@ -234,8 +232,8 @@ function ErrorMessage({ message, onDismiss }) {
 
 function LoadingSpinner() {
   return (
-    <div className="flex justify-center items-center mt-4">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-400"></div>
+    <div className="mt-4 flex items-center justify-center">
+      <div className="loading-spinner" />
     </div>
   );
 }
@@ -284,10 +282,10 @@ export default function App() {
 
     setLoading(true);
     setError(null);
-    
+
     const timeout = setTimeout(() => {
       abortControllerRef.current = new AbortController();
-      
+
       fetch('http://localhost:4000/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -326,21 +324,21 @@ export default function App() {
     let chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     if (genNumbers) chars += '0123456789';
     if (genSymbols) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
-    
+
     let out = '';
     const categories = [];
     categories.push('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
     if (genNumbers) categories.push('0123456789');
     if (genSymbols) categories.push('!@#$%^&*()_+-=[]{}|;:,.<>?');
-    
+
     categories.forEach(category => {
       out += category[Math.floor(Math.random() * category.length)];
     });
-    
+
     for (let i = out.length; i < genLength; ++i) {
       out += chars[Math.floor(Math.random() * chars.length)];
     }
-    
+
     out = out.split('').sort(() => Math.random() - 0.5).join('');
     setGenPassword(out);
   }
@@ -371,14 +369,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 text-slate-100 font-sans app-root">
-      <div className="flex flex-col items-center pt-12 pb-6">
-        <div className="bg-slate-800/80 backdrop-blur shadow-xl border border-slate-700/50 rounded-xl p-8 w-full max-w-xl flex flex-col items-center">
-          <h1 className="text-3xl font-bold text-slate-50 mb-4 tracking-tight">Password Analyzer</h1>
-          <div className="w-full flex items-center gap-2">
+    <div className="app-screen app-root">
+      <div className="app-ambient app-ambient--one" aria-hidden />
+      <div className="app-ambient app-ambient--two" aria-hidden />
+
+      <main className="app-main">
+        <section className="hero-panel">
+          <p className="hero-kicker">Security workbench</p>
+          <h1 className="hero-title">Password Analyzer</h1>
+          <p className="hero-subtitle">Stress-test any password against structure checks, entropy, and known breach signals in real time.</p>
+
+          <div className="input-row">
             <input
               type={showPassword ? 'text' : 'password'}
-              className="w-full bg-slate-700 text-lg p-4 rounded-lg border border-slate-600 focus:ring-4 focus:ring-sky-400 transition"
+              className="password-input"
               ref={inputRef}
               placeholder="Enter your password"
               value={password}
@@ -388,101 +392,108 @@ export default function App() {
               style={{ minWidth: 0 }}
             />
             <button
-              className="text-sky-300 text-2xl ml-2 focus:outline-none hover:text-sky-200 transition"
+              className="reveal-button"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword(v => !v)}
               style={{ minWidth: 0 }}
             >
-              {showPassword ? '🙈' : '👁️'}
+              {showPassword ? 'Hide' : 'Show'}
             </button>
           </div>
-          <div className="mt-4 flex gap-3">
-            <button className="bg-sky-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-sky-600 transition" onClick={() => setShowGen(true)}>
-              Generate
+
+          <div className="action-row">
+            <button className="button button--primary" onClick={() => setShowGen(true)}>
+              Generate Password
             </button>
-            <button className="bg-slate-600 text-slate-100 font-medium px-4 py-2 rounded-full shadow hover:bg-slate-500 transition" onClick={handleClear} aria-label="Clear password and analysis">
+            <button className="button button--ghost" onClick={handleClear} aria-label="Clear password and analysis">
               Clear
             </button>
           </div>
 
           {loading && <LoadingSpinner />}
           {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
-          
+
           {analysis && !loading && (
-            <StrengthMeter level={analysis.strengthLevel} color={analysis.strengthColor} value={analysis.entropy} />
+            <>
+              <StrengthMeter level={analysis.strengthLevel} color={analysis.strengthColor} value={analysis.entropy} />
+              <div className="status-strip">
+                <span>Crack Time</span>
+                <strong>{analysis.crackTime}</strong>
+              </div>
+            </>
           )}
-          {analysis && !loading && (
-            <div className="flex justify-between w-full mt-2 text-sm text-slate-300">
-              <span>Crack time: <span className="text-sky-300 font-mono">{analysis.crackTime}</span></span>
+        </section>
+
+        {analysis && analysis.breached && !loading && (
+          <BreachWarning
+            breachCount={analysis.breachCount}
+            riskLevel={analysis.riskLevel}
+            breachDetails={analysis.breachDetails}
+          />
+        )}
+
+        {analysis && !loading && (
+          <section className="results-panel" role="region" aria-label="Security analysis results">
+            <div className="panel-heading">
+              <h2>Quick Security Checks</h2>
             </div>
-          )}
-        </div>
-      </div>
-      
-      {analysis && analysis.breached && !loading && (
-        <BreachWarning 
-          breachCount={analysis.breachCount} 
-          riskLevel={analysis.riskLevel}
-          breachDetails={analysis.breachDetails}
-        />
-      )}
-      
-      {analysis && !loading && (
-        <div className="max-w-4xl mx-auto mt-10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6" role="region" aria-label="Security analysis results">
-          {CARD_CONFIG.map(card => {
-            const check = analysis.checks.find(c => c.key === card.key);
-            return (
-              <AnalysisCard
-                key={card.key}
-                icon={card.icon}
-                label={card.label}
-                pass={check ? check.pass : false}
-              />
-            );
-          })}
-        </div>
-      )}
-      
-      {analysis && !loading && analysis.suggestions && analysis.suggestions.length > 0 && (
-        <div className="max-w-2xl mx-auto mt-10">
-          <h2 className="text-xl font-bold text-[#00E5FF] mb-2">How to improve your password</h2>
-          <SuggestionsPanel suggestions={analysis.suggestions} />
-        </div>
-      )}
-      
+            <div className="results-grid">
+              {CARD_CONFIG.map(card => {
+                const check = analysis.checks.find(c => c.key === card.key);
+                return (
+                  <AnalysisCard
+                    key={card.key}
+                    icon={card.icon}
+                    label={card.label}
+                    pass={check ? check.pass : false}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {analysis && !loading && analysis.suggestions && analysis.suggestions.length > 0 && (
+          <section className="suggestions-wrap">
+            <h2 className="panel-heading__inline">How to improve this password</h2>
+            <SuggestionsPanel suggestions={analysis.suggestions} />
+          </section>
+        )}
+      </main>
+
       {showGen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={(e) => e.target === e.currentTarget && setShowGen(false)}>
-          <div className="bg-slate-800/95 backdrop-blur p-8 rounded-xl shadow-xl w-full max-w-md mx-auto relative">
-            <button className="absolute top-2 right-2 text-2xl text-sky-300 hover:text-sky-200" onClick={() => setShowGen(false)} aria-label="Close">×</button>
-            <h2 className="text-xl font-bold text-[#00E5FF] mb-4">Generate Strong Password</h2>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowGen(false)}>
+          <div className="generator-modal">
+            <button className="modal-close" onClick={() => setShowGen(false)} aria-label="Close">×</button>
+            <h2 className="panel-heading__inline mb-4">Generate Strong Password</h2>
             <div className="flex items-center gap-4 mb-4">
-              <label className="text-gray-300 min-w-[60px]">Length</label>
-              <input type="range" min={8} max={32} value={genLength} onChange={e => setGenLength(Number(e.target.value))} className="flex-1 accent-[#39FF14]" />
-              <span className="font-mono text-[#39FF14] min-w-[30px] text-right">{genLength}</span>
+              <label className="text-slate-300 min-w-[60px]">Length</label>
+              <input type="range" min={8} max={32} value={genLength} onChange={e => setGenLength(Number(e.target.value))} className="flex-1 accent-emerald-300" />
+              <span className="font-mono text-emerald-300 min-w-[30px] text-right">{genLength}</span>
             </div>
             <div className="flex gap-4 mb-4">
-              <label className="flex items-center gap-2 text-gray-300">
-                <input type="checkbox" checked={genSymbols} onChange={e => setGenSymbols(e.target.checked)} className="accent-[#39FF14]" /> Symbols
+              <label className="flex items-center gap-2 text-slate-300">
+                <input type="checkbox" checked={genSymbols} onChange={e => setGenSymbols(e.target.checked)} className="accent-emerald-300" /> Symbols
               </label>
-              <label className="flex items-center gap-2 text-gray-300">
-                <input type="checkbox" checked={genNumbers} onChange={e => setGenNumbers(e.target.checked)} className="accent-[#39FF14]" /> Numbers
+              <label className="flex items-center gap-2 text-slate-300">
+                <input type="checkbox" checked={genNumbers} onChange={e => setGenNumbers(e.target.checked)} className="accent-emerald-300" /> Numbers
               </label>
             </div>
-            <div className="flex items-center gap-2 mb-2">
-              <input value={genPassword} readOnly className="w-full bg-slate-700 text-sky-300 font-mono p-2 rounded" aria-label="Generated password" placeholder="Click Generate" />
-              <button onClick={handleCopyGen} disabled={!genPassword} className="bg-amber-400 text-slate-900 px-3 py-2 rounded shadow hover:bg-amber-500 transition disabled:opacity-50 disabled:cursor-not-allowed">Copy</button>
+            <div className="flex items-center gap-2 mb-3">
+              <input value={genPassword} readOnly className="generated-output" aria-label="Generated password" placeholder="Click Generate" />
+              <button onClick={handleCopyGen} disabled={!genPassword} className="button button--secondary px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed">Copy</button>
             </div>
             <div className="flex gap-2">
-              <button className="flex-1 bg-sky-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-sky-600 transition" onClick={handleGen}>
+              <button className="button button--primary flex-1" onClick={handleGen}>
                 Generate
               </button>
               {genPassword && (
-                <button className="flex-1 bg-green-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-green-600 transition" onClick={handleUseGenerated}>
+                <button className="button button--positive flex-1" onClick={handleUseGenerated}>
                   Use This
                 </button>
               )}
             </div>
-            {genCopied && <div className="text-[#39FF14] mt-2 opacity-95 transition-opacity duration-300 text-center">✓ Copied to clipboard!</div>}
+            {genCopied && <div className="mt-2 text-center text-emerald-300">Copied to clipboard.</div>}
           </div>
         </div>
       )}
