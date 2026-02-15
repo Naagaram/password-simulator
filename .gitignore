@@ -1,9 +1,13 @@
+# Add to .gitignore if not already there
 node_modules/
 dist/
 build/
 .env
+.env.local
 .DS_Store
 .vscode/
 npm-debug.log
 yarn-error.log
 backend/node_modules/
+frontend/node_modules/
+*.log

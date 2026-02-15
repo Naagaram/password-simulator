@@ -76,11 +76,35 @@ function SuggestionsPanel({ suggestions, onApply }) {
 
 function BreachWarning({ breachCount, riskLevel }) {
   return (
-    <div className="bg-red-700/90 border-4 border-red-500 rounded-xl p-6 mt-6 flex flex-col items-center animate-pulse shadow-lg">
+    <div className="bg-red-700/90 border-4 border-red-500 rounded-xl p-6 mt-6 flex flex-col items-center animate-pulse shadow-lg max-w-2xl mx-auto">
       <span className="text-4xl">⚠️</span>
       <h2 className="text-2xl font-bold text-white mt-2">This password has appeared in data breaches</h2>
       <div className="mt-2 text-lg text-white">Seen in <span className="font-bold">{breachCount.toLocaleString()}</span> breaches</div>
       <span className="mt-2 px-4 py-1 rounded-full bg-black/60 text-red-300 font-bold uppercase tracking-wide">{riskLevel}</span>
+    </div>
+  );
+}
+
+function ErrorMessage({ message, onDismiss }) {
+  return (
+    <div className="bg-red-900/90 border-2 border-red-500 rounded-lg p-4 mt-4 flex items-center justify-between max-w-xl mx-auto">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">❌</span>
+        <span className="text-white">{message}</span>
+      </div>
+      {onDismiss && (
+        <button onClick={onDismiss} className="text-white hover:text-red-200 ml-4">
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LoadingSpinner() {
+  return (
+    <div className="flex justify-center items-center mt-4">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-400"></div>
     </div>
   );
 }
@@ -90,6 +114,7 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [showGen, setShowGen] = useState(false);
   const [genPassword, setGenPassword] = useState('');
   const [genLength, setGenLength] = useState(16);
@@ -97,6 +122,7 @@ export default function App() {
   const [genNumbers, setGenNumbers] = useState(true);
   const [genCopied, setGenCopied] = useState(false);
   const inputRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   useEffect(() => {
     function onKey(e) {
@@ -107,21 +133,63 @@ export default function App() {
   }, [showGen]);
 
   useEffect(() => {
+    // Cleanup function to abort pending requests
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!password) {
       setAnalysis(null);
+      setError(null);
       return;
     }
+
+    // Abort previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     setLoading(true);
+    setError(null);
+    
     const timeout = setTimeout(() => {
-      fetch('/analyze', {
+      abortControllerRef.current = new AbortController();
+      
+      fetch('http://localhost:4000/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password }),
+        signal: abortControllerRef.current.signal
       })
-        .then(res => res.json())
-        .then(setAnalysis)
-        .finally(() => setLoading(false));
-    }, 200);
+        .then(res => {
+          if (!res.ok) {
+            return res.json().then(data => {
+              throw new Error(data.error || 'Analysis failed');
+            });
+          }
+          return res.json();
+        })
+        .then(data => {
+          setAnalysis(data);
+          setError(null);
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') {
+            return; // Request was cancelled, ignore
+          }
+          console.error('Analysis error:', err);
+          setError(err.message || 'Failed to analyze password. Please check if the backend is running.');
+          setAnalysis(null);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }, 300); // Increased debounce time for better UX
+
     return () => clearTimeout(timeout);
   }, [password]);
 
@@ -129,22 +197,49 @@ export default function App() {
     let chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     if (genNumbers) chars += '0123456789';
     if (genSymbols) chars += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    
+    // Ensure at least one character from each selected category
     let out = '';
-    for (let i = 0; i < genLength; ++i) {
+    const categories = [];
+    categories.push('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    if (genNumbers) categories.push('0123456789');
+    if (genSymbols) categories.push('!@#$%^&*()_+-=[]{}|;:,.<>?');
+    
+    // Add one character from each category
+    categories.forEach(category => {
+      out += category[Math.floor(Math.random() * category.length)];
+    });
+    
+    // Fill the rest randomly
+    for (let i = out.length; i < genLength; ++i) {
       out += chars[Math.floor(Math.random() * chars.length)];
     }
+    
+    // Shuffle the password
+    out = out.split('').sort(() => Math.random() - 0.5).join('');
+    
     setGenPassword(out);
   }
 
   function handleCopyGen() {
-    navigator.clipboard.writeText(genPassword);
-    setGenCopied(true);
-    setTimeout(() => setGenCopied(false), 1200);
+    navigator.clipboard.writeText(genPassword).then(() => {
+      setGenCopied(true);
+      setTimeout(() => setGenCopied(false), 1200);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+      alert('Failed to copy password to clipboard');
+    });
+  }
+
+  function handleUseGenerated() {
+    setPassword(genPassword);
+    setShowGen(false);
   }
 
   function handleClear() {
     setPassword('');
     setAnalysis(null);
+    setError(null);
     setShowGen(false);
     setGenPassword('');
     setShowPassword(false);
@@ -170,7 +265,7 @@ export default function App() {
               style={{ minWidth: 0 }}
             />
             <button
-              className="text-sky-300 text-2xl ml-2 focus:outline-none"
+              className="text-sky-300 text-2xl ml-2 focus:outline-none hover:text-sky-200 transition"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword(v => !v)}
               style={{ minWidth: 0 }}
@@ -186,22 +281,29 @@ export default function App() {
               Clear
             </button>
           </div>
-          {analysis && (
+
+          {loading && <LoadingSpinner />}
+          
+          {error && <ErrorMessage message={error} onDismiss={() => setError(null)} />}
+          
+          {analysis && !loading && (
             <StrengthMeter level={analysis.strengthLevel} color={analysis.strengthColor} value={analysis.entropy} />
           )}
-          {analysis && (
+          {analysis && !loading && (
             <div className="flex justify-between w-full mt-2 text-sm text-slate-300">
               <span>Crack time: <span className="text-sky-300 font-mono">{analysis.crackTime}</span></span>
             </div>
           )}
         </div>
       </div>
+      
       {/* Breach Warning */}
-      {analysis && analysis.breached && (
+      {analysis && analysis.breached && !loading && (
         <BreachWarning breachCount={analysis.breachCount} riskLevel={analysis.riskLevel} />
       )}
+      
       {/* Live Security Analysis Dashboard */}
-      {analysis && (
+      {analysis && !loading && (
         <div className="max-w-4xl mx-auto mt-10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6" role="region" aria-label="Security analysis results">
           {CARD_CONFIG.map(card => {
             const check = analysis.checks.find(c => c.key === card.key);
@@ -216,40 +318,49 @@ export default function App() {
           })}
         </div>
       )}
+      
       {/* Suggestions Panel */}
-      {analysis && (
+      {analysis && !loading && analysis.suggestions && analysis.suggestions.length > 0 && (
         <div className="max-w-2xl mx-auto mt-10">
           <h2 className="text-xl font-bold text-[#00E5FF] mb-2">How to improve your password</h2>
           <SuggestionsPanel suggestions={analysis.suggestions} />
         </div>
       )}
+      
       {/* Password Generator Modal */}
       {showGen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={(e) => e.target === e.currentTarget && setShowGen(false)}>
           <div className="bg-slate-800/95 backdrop-blur p-8 rounded-xl shadow-xl w-full max-w-md mx-auto relative">
-            <button className="absolute top-2 right-2 text-2xl text-sky-300" onClick={() => setShowGen(false)} aria-label="Close">×</button>
+            <button className="absolute top-2 right-2 text-2xl text-sky-300 hover:text-sky-200" onClick={() => setShowGen(false)} aria-label="Close">×</button>
             <h2 className="text-xl font-bold text-[#00E5FF] mb-4">Generate Strong Password</h2>
             <div className="flex items-center gap-4 mb-4">
-              <label className="text-gray-300">Length</label>
-              <input type="range" min={8} max={32} value={genLength} onChange={e => setGenLength(Number(e.target.value))} className="accent-[#39FF14]" />
-              <span className="font-mono text-[#39FF14]">{genLength}</span>
+              <label className="text-gray-300 min-w-[60px]">Length</label>
+              <input type="range" min={8} max={32} value={genLength} onChange={e => setGenLength(Number(e.target.value))} className="flex-1 accent-[#39FF14]" />
+              <span className="font-mono text-[#39FF14] min-w-[30px] text-right">{genLength}</span>
             </div>
             <div className="flex gap-4 mb-4">
               <label className="flex items-center gap-2 text-gray-300">
-                <input type="checkbox" checked={genSymbols} onChange={e => setGenSymbols(e.target.checked)} /> Symbols
+                <input type="checkbox" checked={genSymbols} onChange={e => setGenSymbols(e.target.checked)} className="accent-[#39FF14]" /> Symbols
               </label>
               <label className="flex items-center gap-2 text-gray-300">
-                <input type="checkbox" checked={genNumbers} onChange={e => setGenNumbers(e.target.checked)} /> Numbers
+                <input type="checkbox" checked={genNumbers} onChange={e => setGenNumbers(e.target.checked)} className="accent-[#39FF14]" /> Numbers
               </label>
             </div>
             <div className="flex items-center gap-2 mb-2">
-              <input value={genPassword} readOnly className="w-full bg-slate-700 text-sky-300 font-mono p-2 rounded" aria-label="Generated password" />
-              <button onClick={handleCopyGen} className="bg-amber-400 text-slate-900 px-3 py-1 rounded shadow">Copy</button>
+              <input value={genPassword} readOnly className="w-full bg-slate-700 text-sky-300 font-mono p-2 rounded" aria-label="Generated password" placeholder="Click Generate" />
+              <button onClick={handleCopyGen} disabled={!genPassword} className="bg-amber-400 text-slate-900 px-3 py-2 rounded shadow hover:bg-amber-500 transition disabled:opacity-50 disabled:cursor-not-allowed">Copy</button>
             </div>
-            <button className="w-full mt-2 bg-sky-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-sky-600 transition" onClick={handleGen}>
-              Generate
-            </button>
-            {genCopied && <div className="text-[#39FF14] mt-2 opacity-95 transition-opacity duration-300">Copied!</div>}
+            <div className="flex gap-2">
+              <button className="flex-1 bg-sky-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-sky-600 transition" onClick={handleGen}>
+                Generate
+              </button>
+              {genPassword && (
+                <button className="flex-1 bg-green-500 text-white font-bold px-6 py-2 rounded-full shadow hover:bg-green-600 transition" onClick={handleUseGenerated}>
+                  Use This
+                </button>
+              )}
+            </div>
+            {genCopied && <div className="text-[#39FF14] mt-2 opacity-95 transition-opacity duration-300 text-center">✓ Copied to clipboard!</div>}
           </div>
         </div>
       )}

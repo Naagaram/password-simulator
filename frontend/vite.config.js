@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/analyze': 'http://localhost:4000'
+      '/analyze': 'http://localhost:4000',
+      '/health': 'http://localhost:4000' 
+
     }
   }
 })
