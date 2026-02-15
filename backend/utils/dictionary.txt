@@ -1,0 +1,16 @@
+// List of common dictionary words (expand as needed)
+password
+admin
+welcome
+letmein
+qwerty
+monkey
+football
+iloveyou
+starwars
+hello
+sunshine
+princess
+abc123
+trustno1
+
