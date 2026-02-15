@@ -63,7 +63,7 @@ function getSuggestions(password, patterns, entropy, hibp) {
   if (patterns.includes('keyboard')) suggestions.push('Avoid keyboard patterns');
   if (patterns.includes('leetspeak')) suggestions.push('Leetspeak is easily guessed by attackers');
   if (entropy < 45) suggestions.push('Add 2 random words → 10,000x stronger');
-  if (hibp.breached) suggestions.push('Generate a new, unique password');
+  if (hibp.breached) suggestions.push('Generate a new, unique password immediately');
   return suggestions;
 }
 
@@ -86,6 +86,7 @@ async function analyzePassword(password, opts = {}) {
       strengthColor,
       breached: hibp.breached,
       breachCount: hibp.count,
+      breachDetails: hibp.breachDetails, // NEW: Detailed breach information
       riskLevel,
       checks,
       patterns,
@@ -98,6 +99,7 @@ async function analyzePassword(password, opts = {}) {
     entropy,
     breached: hibp.breached,
     breachCount: hibp.count,
+    breachDetails: hibp.breachDetails,
     patterns,
     advice: suggestions
   };
