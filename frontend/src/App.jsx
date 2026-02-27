@@ -216,7 +216,7 @@ function BreachWarning({ breachCount, riskLevel, breachDetails }) {
         {breachDetails && breachDetails.likelyBreaches && breachDetails.likelyBreaches.length > 0 && (
           <button
             onClick={() => setShowDetails(!showDetails)}
-            className="button button--secondary mt-4"
+            className="button button--secondary warning-details-button mt-4"
           >
             {showDetails ? 'Hide' : 'Show'} Breach Details
           </button>
